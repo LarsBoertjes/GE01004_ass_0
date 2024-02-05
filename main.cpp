@@ -4,6 +4,7 @@
 #include <CGAL/Polygon_2.h>
 #include <CGAL/Projection_traits_yz_3.h>
 #include <CGAL/Polygon_2_algorithms.h>
+#include <CGAL/draw_polygon_2.h>
 
 typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
 typedef K::Point_2                                          Point_2;
@@ -68,6 +69,10 @@ int main() {
         Segment_2 e = p.edge(i);
         std::cout << e << std::endl;
     }
+
+    // 2.5 Draw polygon p
+
+    CGAL::draw(p);
 
     return EXIT_SUCCESS;
 }
