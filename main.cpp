@@ -1,78 +1,113 @@
+// Example program for the linear_least_square_fitting function
+// on a set of 3D triangles
+#include <CGAL/Simple_cartesian.h>
+#include <CGAL/Search_traits_3.h>
+#include <CGAL/K_neighbor_search.h>
+#include <CGAL/Orthogonal_incremental_neighbor_search.h>
+#include <CGAL/linear_least_squares_fitting_3.h>
+#include <vector>
+#include <list>
+#include <fstream>
 #include <iostream>
+#include <filesystem>
+#include <iomanip>
 
-#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
-#include <CGAL/Polygon_2.h>
-#include <CGAL/Projection_traits_yz_3.h>
-#include <CGAL/Polygon_2_algorithms.h>
-#include <CGAL/draw_polygon_2.h>
+typedef double                                                      FT;
+typedef CGAL::Simple_cartesian<FT>                                  K;
+typedef K::Line_3                                                   Line;
+typedef K::Plane_3                                                  Plane;
+typedef K::Point_3                                                  Point3;
+typedef K::Triangle_3                                               Triangle;
+typedef CGAL::Search_traits_3<K>                                    TreeTraits;
+typedef CGAL::Orthogonal_incremental_neighbor_search<TreeTraits>    NN_search;
+typedef NN_search::Tree                                                Tree;
 
-typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
-typedef K::Point_2                                          Point_2;
-typedef K::Point_3                                          Point_3;
-typedef CGAL::Polygon_2<K>                                  Polygon_2;
-typedef K::Segment_2                                        Segment_2;
+namespace fs = std::filesystem;
 
+struct PointGeoms {
+    Point3 point;
+    double roughness;
 
-void check_inside(Point_2 pt, Point_2 *pgn_begin, Point_2 *pgn_end, K traits) {
-    std::cout << "The point " << pt;
-    switch(CGAL::bounded_side_2(pgn_begin, pgn_end, pt, traits)) {
-        case CGAL::ON_BOUNDED_SIDE :
-            std::cout << " is insde the polygon.\n";
-            break;
-        case CGAL::ON_BOUNDARY :
-            std::cout << " is on the polygon boundary.\n";
-            break;
-        case CGAL::ON_UNBOUNDED_SIDE :
-            std::cout << " is outside the polygon.\n";
-            break;
+    PointGeoms(Point3 p, double r) : point(p), roughness(r) {}
+};
+
+std::vector<Point3> findKNearestNeighbors(const Tree& tree, const Point3& query_point, std::size_t k) {
+    std::vector<Point3> neighbors;
+    NN_search search(tree, query_point, k);
+
+    for (auto it = search.begin(); it != search.end(); ++it) {
+        neighbors.push_back(it->first);
     }
+
+    return neighbors;
 }
 
-int main() {
-    Point_2 points[] = { Point_2(0, 0), Point_2(5.1, 0), Point_2(1,1), Point_2(0.5, 6)};
-    Polygon_2 pgn(points, points+4);
 
-    // 2.1 check if the polygon is simple.
-    std::cout << "The polygon is " << (CGAL::is_simple_2(points, points+4, K()) ? "" : "not ") << "simple." << std::endl;
+int main(void) {
+    std::string path = "../data";
+    std::vector<std::vector<PointGeoms>> PointClouds; // Vector to store point clouds
 
-    // 2.2 Use check_inside function declared before main()
-    check_inside(Point_2(0.5, 0.5), points, points+4, K());
-    check_inside(Point_2(1.5, 2.5), points, points+4, K());
-    check_inside(Point_2(2.5, 0), points, points+4, K());
-
-    // 2.3 Polygons in 3D Space
-    /*Point_3 points_3d[4] = {Point_3(0,1,1), Point_3(0,2,1), Point_3(0,2,2), Point_3(0,1,2)};
-
-    bool b = CGAL::is_simple_2(points_3d, points_3d+4, CGAL::Projection_traits_yz_3<K>());
-
-    if (!b) {
-        std::cerr << "Error polygon is not simple" << std::endl;
-        return 1;
-    }*/
-
-    // 2.4 Iterating over Vertices and Edges
-    Polygon_2 p;
-    p.push_back(Point_2(0,0));
-    p.push_back(Point_2(4, 0));
-    p.push_back(Point_2(4,4));
-    p.push_back(Point_2(0,4));
-
-    std::cout << "Iterating over the vertices of p: " << std::endl;
-
-    for (int i = 0; i < p.size(); ++i) {
-        std::cout << p.vertex(i) << std::endl;
+    if (!fs::exists(path)) {
+        std::cerr << "Data directory does not exist." << std::endl;
+        return EXIT_FAILURE;
     }
 
-    std::cout << "Iterating over the edges of p: " << std::endl;
+    // Iterate over the files in the directory
+    for (const auto& entry : fs::directory_iterator(path)) {
+        if (entry.path().extension() == ".xyz") {
+            std::ifstream file(entry.path());
+            std::vector<PointGeoms> points; // Vector to store points from the current file
 
-    for (int i = 0; i < p.size(); ++i) {
-        Segment_2 e = p.edge(i);
-        std::cout << e << std::endl;
+            if (file) {
+                FT x, y, z;
+                double defaultRoughness = 0.5;
+                // Read points from the .xyz file
+                while (file >> x >> y >> z) {
+                    Point3 p(x, y, z);
+                    points.push_back(PointGeoms(p, defaultRoughness));
+                }
+                file.close();
+
+                // Add the current file's points vector to the PointClouds vector
+                PointClouds.push_back(points);
+            } else {
+                std::cerr << "Could not open file " << entry.path() << std::endl;
+            }
+        }
     }
 
-    // 2.5 Draw polygon p
+    // Output the total number of point clouds and the number of points in each point cloud
+    std::cout << PointClouds.size() << " point clouds loaded." << std::endl;
+    for (size_t i = 0; i < PointClouds.size(); ++i) {
+        std::cout << "Point cloud " << i + 1 << " contains " << PointClouds[i].size() << " points." << std::endl;
+    }
 
-    CGAL::draw(p);
+    // Create a search tree from point cloud data
+    std::vector<PointGeoms> pointCloud = PointClouds[0];
 
-    return EXIT_SUCCESS;
+    std::list<Point3> points_for_tree;
+    for (const auto& pg : pointCloud) {
+        points_for_tree.push_back(pg.point);
+    }
+
+    Tree tree(points_for_tree.begin(), points_for_tree.end());
+
+    for (auto& pg : pointCloud) {
+        // find k-nearest neighbors of the current point
+        auto neighbors = findKNearestNeighbors(tree, pg.point, 2);
+
+        Plane bestPlane;
+        CGAL::linear_least_squares_fitting_3(neighbors.begin(), neighbors.end(), bestPlane, CGAL::Dimension_tag<0>());
+
+        pg.roughness = std::sqrt(CGAL::squared_distance(pg.point, bestPlane));
+
+    }
+
+    std::cout << "Point Coordinates and Roughness:" << std::endl;
+    for (const auto& pg : pointCloud) {
+        std::cout << std::fixed << std::setprecision(2);
+        std::cout << "Point: (" << pg.point.x() << ", " << pg.point.y() << ", " << pg.point.z() << "), " << "Roughness: " << pg.roughness << std::endl;
+    }
+
+    return 0;
 }
